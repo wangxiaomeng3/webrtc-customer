@@ -14,14 +14,27 @@
 	</style>
 </head>
 <body>
+
+<!-- 此空白脚本部分专为查询参数预留 -->
+<script>
+</script>
+
 <!-- 加载polyfill，先加载本地副本以进行本地测试 -->
 <script src="extra/adapter.js" type="text/javascript">
 </script>
 <script src="https://webrtc.github,io/adapter/adapter.js" type="text/javascript">
-
 </script>
+
+<!-- 加载基于 XHR 的信令通道，以基于密钥定向连接 -->
+<script src="clientXHRSignalingChannel.js"
+		type="text/javascript">
+</script>
+
 <script>
-var myVideoStream,myVideo;
+var signalingChannel,key,id,
+	haveLocalMedia = false,
+	connected = false,
+    myVideoStream,myVideo;
 
 /////////////////////////////////////
 // 这是主例程
@@ -29,9 +42,79 @@ var myVideoStream,myVideo;
 
 // 由此开始获取本地媒体
 window.onload = function(){
+
+	// 如果 URI 中提供了密钥，则自动连接信令通道
+	if(queryparams && queryparams['key']){
+		document.getElementById("key").value = queryparams['key'];
+		connect();
+	}
+
 	myVideo = document.getElementById("myVideo");
 	getMedia;
 };
+
+/////////////////////////////////////
+// 接下来的这一节代码用于建立信令通道。
+/////////////////////////////////////
+
+// 此例程会连接至 web 服务器并建立信令通道。
+// 当出现文档负载或用户单击 "Connect" (连接) 按钮时，将自动调用此例程。
+function connect(){
+	var errorCB,scHandlers,handleMsg;
+	
+	// 首先，获取用户连接的密钥
+	key = document.getElementById("key").value;
+	
+	// 此处理程序用于处理通过信令通道收到的所有消息
+	handleMsg = function (msg){
+		// 将消息发布到屏幕上
+		var msgE = document.getElementById("inmessages");
+		var msgString = JSON.stringify(msg);
+		msgE.value = msgString+"\n"+msgE.value;
+	};
+	
+	// 用于信令通道的处理程序
+	scHandlers = {
+		'onwaiting':function(){
+			setStatus("Waiting");
+		},
+		'onConnected':function(){
+			connected = true;
+			setStatus("Connected");
+			// 等待本地媒体准备就绪
+			verifySetupDone();
+		},
+		'onMessage': handleMsg
+	};
+	
+	// 最后，创建信令通道
+	signalingChannel = createSignalingChannel(key,scHandlers);
+	errorCB = function(msg){
+		document.getElementById("response").innerHTML = msg;
+	};
+	
+	// 进行连接
+	signalingChannel.connect(errorCB);
+}
+
+// 此例程通过信令通道发送消息，其方式有两种：一是执行显示调用；二是通过用户单击 "Send" (发送) 按钮。
+function send(msg){
+	var handler = function(res){
+		 document.getElementById("response").innerHTML = res;
+		 return;
+	},
+	
+	// 如果没有传入，则获取消息
+	msg = msg||document.getElementById("message").value;
+	
+	// 发布到屏幕上
+	msgE = document.getElementById("outmessages");
+	var msgString = JSON.stringify(msg);
+	msgE.value = msgString + "\n" + msgE.value;
+	
+	// 并通过信令通道发送
+	signalingChannel.send(msg,handler);
+}
 
 /////////////////////////////////////
 // 接下来的这一节代码用于获取本地媒体
@@ -45,13 +128,22 @@ function getMedia(){
 function gotUserMedia(stream){
 	myVideoStream = stream;
 	
+	haveLocalMedia = true;
+	
 	// 向我显示我的本地视频
 	attachMediaStream(myVideo, myVideoStream);
+	
+	// 等待建立信令通道
+	verifySetupDone();
 }
 
 function didntGetUserMedia(){
 	console.log("couldn't get video");
 }
+
+// 此守护例程实际上用于对两项异步活动
+// 的完成时间进行同步：一是创建信令通道；
+// 二是
 </script>
 
 <div>
